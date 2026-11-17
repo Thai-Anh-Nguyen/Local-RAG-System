@@ -1,2 +1,18 @@
 final-project
 .directory
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local config (copy from .env.example)
+.env
+
+# Frontend
+node_modules/
+dist/
+
+# Packaging output
+*.zip

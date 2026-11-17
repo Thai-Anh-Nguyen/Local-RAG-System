@@ -1,0 +1,16 @@
+# Dev mode: only Chroma runs in Docker. The API (uv run) and frontend (vite dev) run on the host
+# and use the host Ollama at 127.0.0.1:11434.
+#   docker compose -f docker/compose.dev.yml up -d
+name: local-rag-dev
+
+services:
+  chroma:
+    image: chromadb/chroma:1.5.9  # keep in step with the chromadb Python client version
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - chroma-dev-data:/data
+    restart: unless-stopped
+
+volumes:
+  chroma-dev-data:
