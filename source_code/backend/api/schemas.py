@@ -17,3 +17,4 @@ class ChatRequest(BaseModel):
 class RetrieveRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     k: int | None = Field(default=None, ge=1, le=20)
+    mode: Literal["hybrid", "dense"] | None = None

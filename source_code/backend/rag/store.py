@@ -42,6 +42,7 @@ class KnowledgeStore:
         self.client = client
         self.embeddings = embeddings
         self.collection_name = collection
+        self.version = getattr(self, "version", 0) + 1  # bumped on every write (cache invalidation)
         self.vs = Chroma(
             client=client,
             collection_name=collection,
@@ -54,18 +55,33 @@ class KnowledgeStore:
         return self.vs._collection
 
     # ---- writes ----------------------------------------------------------------
-    def add_chunks(self, docs: list[Document]) -> None:
+    def add_chunks(self, docs: list[Document], embeddings: list[list[float]] | None = None) -> None:
         if not docs:
             return
         now = time.time()
         for d in docs:
             d.metadata["ingested_at"] = now
-        self.vs.add_documents(docs, ids=[d.metadata["id"] for d in docs])
+        if embeddings is None:
+            embeddings = self.embeddings.embed_documents([d.page_content for d in docs])
+        self.collection.upsert(
+            ids=[d.metadata["id"] for d in docs],
+            documents=[d.page_content for d in docs],
+            metadatas=[d.metadata for d in docs],
+            embeddings=embeddings,
+        )
+        self.version += 1
+
+    def replace_source(self, source: str, docs: list[Document]) -> None:
+        """Embed first, then swap: if embedding fails (e.g. Ollama down) the old chunks stay."""
+        embeddings = self.embeddings.embed_documents([d.page_content for d in docs]) if docs else []
+        self.delete_source(source)
+        self.add_chunks(docs, embeddings)
 
     def delete_source(self, source: str) -> int:
         ids = self.collection.get(where={"source": source}, include=[])["ids"]
         if ids:
             self.collection.delete(ids=ids)
+            self.version += 1
         return len(ids)
 
     def reset(self) -> None:
@@ -123,13 +139,40 @@ class KnowledgeStore:
             return None
         return Chunk(got["ids"][0], got["documents"][0], got["metadatas"][0])
 
-    def search(self, query: str, k: int) -> list[tuple[Chunk, float]]:
+    def all_chunks(self) -> list[Chunk]:
+        got = self.collection.get(include=["documents", "metadatas"])
+        return [Chunk(i, t, m) for i, t, m in zip(got["ids"], got["documents"], got["metadatas"])]
+
+    def embed_query(self, query: str) -> list[float]:
+        return self.embeddings.embed_query(query)
+
+    def search_by_vector(self, vector: list[float], k: int) -> list[tuple[Chunk, float]]:
         """Top-k chunks with cosine similarity (1 - cosine distance)."""
-        results = self.vs.similarity_search_with_score(query, k=k)
+        if k <= 0:
+            return []
+        got = self.collection.query(
+            query_embeddings=[vector], n_results=k, include=["documents", "metadatas", "distances"]
+        )
         return [
-            (Chunk(doc.id or doc.metadata.get("id", ""), doc.page_content, doc.metadata), 1.0 - dist)
-            for doc, dist in results
+            (Chunk(i, t, m), 1.0 - d)
+            for i, t, m, d in zip(got["ids"][0], got["documents"][0], got["metadatas"][0], got["distances"][0])
         ]
+
+    def cosine_for(self, vector: list[float], ids: list[str]) -> dict[str, float]:
+        """Cosine similarity between `vector` and the stored embeddings of `ids`."""
+        if not ids:
+            return {}
+        got = self.collection.get(ids=ids, include=["embeddings"])
+        qn = sum(x * x for x in vector) ** 0.5 or 1.0
+        out = {}
+        for cid, emb in zip(got["ids"], got["embeddings"]):
+            en = sum(float(x) * float(x) for x in emb) ** 0.5 or 1.0
+            out[cid] = sum(float(a) * float(b) for a, b in zip(vector, emb)) / (qn * en)
+        return out
+
+    def search(self, query: str, k: int) -> list[tuple[Chunk, float]]:
+        """Dense-only top-k (cosine similarity)."""
+        return self.search_by_vector(self.embed_query(query), k)
 
 
 def make_store(settings: Settings) -> KnowledgeStore:

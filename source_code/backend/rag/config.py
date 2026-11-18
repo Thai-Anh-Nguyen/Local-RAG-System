@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data/handbooks")
 
     # Retrieval / answering
+    retrieval_mode: Literal["hybrid", "dense"] = "hybrid"
     top_k: int = 5
-    relevance_threshold: float = 0.5
+    relevance_threshold: float = 0.62
     history_turns: int = 3
 
     @property

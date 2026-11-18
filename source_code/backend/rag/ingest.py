@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .chunking import chunk_pages
+from .chunking import CHUNKER_VERSION, chunk_pages
 from .config import Settings, get_settings
 from .parsing import SUPPORTED_SUFFIXES, parse_file
 from .store import KnowledgeStore, get_store
@@ -58,12 +58,16 @@ def ingest_file(
     parser: str | None = None,
 ) -> IngestResult:
     source = source or path.name
-    digest = file_hash(path.read_bytes())
+    parser = parser or settings.pdf_parser
+    # Fingerprint = file content + everything that shapes the chunks, so changing the parser,
+    # chunk size/overlap or the chunker itself re-indexes the file instead of skipping it.
+    recipe = f"{parser}:{settings.chunk_size}:{settings.chunk_overlap}:{CHUNKER_VERSION}"
+    digest = file_hash(path.read_bytes() + recipe.encode())
     existing = store.source_hash(source)
     if existing == digest:
         return IngestResult(source, "unchanged", 0, 0)
 
-    pages = parse_file(path, parser or settings.pdf_parser)
+    pages = parse_file(path, parser)
     docs = chunk_pages(
         pages,
         source=source,
@@ -71,9 +75,7 @@ def ingest_file(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
     )
-    if existing is not None:
-        store.delete_source(source)
-    store.add_chunks(docs)
+    store.replace_source(source, docs)
     return IngestResult(source, "replaced" if existing else "indexed", len(docs), len(pages))
 
 

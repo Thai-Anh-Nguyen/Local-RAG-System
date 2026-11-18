@@ -35,11 +35,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8080")
     ap.add_argument("--k", type=int, default=5)
+    ap.add_argument("--mode", choices=["hybrid", "dense"], default=None, help="default: server setting")
     args = ap.parse_args()
 
+    hits_at_k = 0
+    on_topic, off_topic = [], []
     with httpx.Client(base_url=args.url, timeout=60) as client:
         for question, expect in PROBES:
-            r = client.post("/api/retrieve", json={"question": question, "k": args.k}).json()
+            body = {"question": question, "k": args.k, **({"mode": args.mode} if args.mode else {})}
+            r = client.post("/api/retrieve", json=body).json()
             rank = None
             if expect:
                 for h in r["hits"]:
@@ -47,9 +51,15 @@ def main() -> None:
                         rank = h["n"]
                         break
             verdict = "off-topic" if expect is None else (f"hit@{rank}" if rank else "MISS")
+            hits_at_k += bool(rank)
+            (off_topic if expect is None else on_topic).append(r["top_score"])
             print(f"\n[{verdict}] top={r['top_score']:.3f}  {question}")
             for h in r["hits"]:
-                print(f"   {h['n']}. {h['score']:.3f}  p{h['page']:<2} {h['heading'][:70]}")
+                ranks = f"dense#{h['dense_rank'] or '-'} bm25#{h['bm25_rank'] or '-'}"
+                print(f"   {h['n']}. {h['score']:.3f}  {ranks:<18} p{h['page']:<2} {h['heading'][:60]}")
+    print(f"\nmode={r['mode']}  hit@{args.k}: {hits_at_k}/{len(on_topic)}  "
+          f"on-topic top-score min={min(on_topic):.3f}  off-topic top-score max={max(off_topic):.3f}  "
+          f"threshold={r['threshold']}")
 
 
 if __name__ == "__main__":

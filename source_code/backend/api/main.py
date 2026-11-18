@@ -11,6 +11,7 @@ from rag.config import get_settings
 from rag.ingest import collect_files, ingest_file
 from rag.store import get_store
 
+from .routes_chat import router as chat_router
 from .routes_kb import router as kb_router
 
 log = logging.getLogger("rag.api")
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
 def create_app(*, run_lifespan: bool = True) -> FastAPI:
     app = FastAPI(title="Local RAG — CS Handbook", lifespan=lifespan if run_lifespan else None)
     app.include_router(kb_router)
+    app.include_router(chat_router)
     return app
 
 

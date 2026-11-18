@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from rag.config import Settings
 from rag.ingest import ingest_file
 from rag.parsing import SUPPORTED_SUFFIXES
-from rag.retrieval import retrieve
+from rag.retrieval import retrieve, top_score
 from rag.store import KnowledgeStore
 
 from .deps import settings_dep, store_dep
@@ -76,10 +76,12 @@ async def retrieve_route(
     settings: Settings = Depends(settings_dep),
     store: KnowledgeStore = Depends(store_dep),
 ):
-    hits = await run_in_threadpool(retrieve, store, req.question, req.k or settings.top_k)
-    top = hits[0].score if hits else 0.0
+    mode = req.mode or settings.retrieval_mode
+    hits = await run_in_threadpool(retrieve, store, req.question, req.k or settings.top_k, mode)
+    top = top_score(hits)
     return {
         "question": req.question,
+        "mode": mode,
         "threshold": settings.relevance_threshold,
         "top_score": round(top, 4),
         "would_refuse": top < settings.relevance_threshold,
@@ -109,7 +111,8 @@ async def upload_document(
     # Keep uploads next to the handbooks so they are re-ingested if the collection is rebuilt.
     upload_dir = settings.data_path / "uploads"
     upload_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=upload_dir, suffix=".part", delete=False) as tmp:
+    # Stage outside the data dir (keeping the real suffix for the parser), move in only on success.
+    with tempfile.NamedTemporaryFile(suffix=Path(name).suffix, delete=False) as tmp:
         shutil.copyfileobj(file.file, tmp)
     tmp_path = Path(tmp.name)
     try:
@@ -117,7 +120,7 @@ async def upload_document(
     except Exception as e:
         tmp_path.unlink(missing_ok=True)
         raise HTTPException(422, f"Could not ingest {name}: {e}") from e
-    tmp_path.replace(upload_dir / name)
+    shutil.move(tmp_path, upload_dir / name)
     return result.__dict__
 
 

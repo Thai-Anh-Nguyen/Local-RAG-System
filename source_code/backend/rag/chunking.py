@@ -18,9 +18,20 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .parsing import PageText
 
+# Bump when chunking logic changes so existing indexes are rebuilt on the next ingest.
+CHUNKER_VERSION = "2"
+
 _HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 # Lines rendered as headings that are really body text (e.g. "### _Prerequisites: CS201_")
 _FAKE_HEADING = re.compile(r"^prerequisite", re.IGNORECASE)
+# Course codes: CS311, MATH 202, CS3xx
+_COURSE_CODE = r"[A-Z]{2,5}\s?(?:\d{3}[A-Za-z]?|\d[xX]{2})"
+# Course titles the PDF renders as bold text rather than a heading:
+#   "**CS307: Machine Learning** _Prerequisites: CS201_"
+_BOLD_COURSE = re.compile(rf"^\*\*\s*({_COURSE_CODE}\s*:[^*]+?)\s*\*\*(.*)$")
+_IS_COURSE = re.compile(rf"^{_COURSE_CODE}\s*:")
+# "CS212: Programming Languages Prerequisites: CS201" -> title + body line
+_INLINE_PREREQ = re.compile(r"\s+(Prerequisites?\s*:.*)$", re.IGNORECASE)
 
 
 def clean_heading(raw: str) -> str:
@@ -43,21 +54,41 @@ def _sections(pages: list[PageText]) -> list[_Section]:
     def current_trail() -> list[str]:
         return [trail[k] for k in sorted(trail)]
 
+    def course_level() -> int:
+        """Bold course titles sit at the same level as the previous course heading,
+        or one below the deepest current heading."""
+        deepest = max(trail) if trail else 0
+        if deepest and _IS_COURSE.match(trail[deepest]):
+            return deepest
+        return min(deepest + 1, 6)
+
     for page in pages:
         sec = _Section(page=page.page, trail=current_trail())
         sections.append(sec)
         for line in page.text.splitlines():
             m = _HEADING.match(line)
-            heading = clean_heading(m.group(2)) if m else ""
-            if m and heading and not _FAKE_HEADING.match(heading):
-                level = len(m.group(1))
-                for deeper in [k for k in trail if k >= level]:
-                    del trail[deeper]
-                trail[level] = heading
-                sec = _Section(page=page.page, trail=current_trail())
-                sections.append(sec)
+            bold = None if m else _BOLD_COURSE.match(line.strip())
+            if m:
+                heading, level, rest = clean_heading(m.group(2)), len(m.group(1)), ""
+            elif bold:
+                heading, level, rest = clean_heading(bold.group(1)), course_level(), bold.group(2)
             else:
-                sec.lines.append(clean_heading(m.group(2)) if m else line)
+                sec.lines.append(line)
+                continue
+
+            if not heading or _FAKE_HEADING.match(heading):
+                sec.lines.append(heading)
+                continue
+            prereq = _INLINE_PREREQ.search(heading)
+            if prereq:
+                heading, rest = heading[: prereq.start()].strip(), f"{prereq.group(1)} {rest}"
+            for deeper in [k for k in trail if k >= level]:
+                del trail[deeper]
+            trail[level] = heading
+            sec = _Section(page=page.page, trail=current_trail())
+            sections.append(sec)
+            if clean_heading(rest):
+                sec.lines.append(clean_heading(rest))
     return [s for s in sections if "\n".join(s.lines).strip()]
 
 

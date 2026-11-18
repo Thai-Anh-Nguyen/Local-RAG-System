@@ -64,6 +64,25 @@ def test_prerequisite_lines_are_body_not_headings():
     assert "Prerequisites: None" in course.page_content
 
 
+def test_bold_course_titles_start_a_new_section():
+    pages = [PageText(1, "### **CS306: Computer Security**\nSecurity text.\n\n"
+                         "**CS307: Machine Learning** _Prerequisites: CS201_\nML text.")]
+    docs = _chunks(pages)
+    ml = next(d for d in docs if "ML text" in d.page_content)
+    sec = next(d for d in docs if "Security text" in d.page_content)
+    assert ml.metadata["heading"] == "CS307: Machine Learning"
+    assert "Prerequisites: CS201" in ml.page_content
+    assert sec.metadata["heading"] == "CS306: Computer Security"
+    assert "ML text" not in sec.page_content
+
+
+def test_inline_prerequisite_is_moved_out_of_heading():
+    pages = [PageText(1, "### **CS212: Programming Languages** _Prerequisites: CS201_\nPL text.")]
+    doc = _chunks(pages)[0]
+    assert doc.metadata["heading"] == "CS212: Programming Languages"
+    assert "Prerequisites: CS201" in doc.page_content
+
+
 def test_chunk_metadata_and_ids_are_stable():
     a, b = _chunks(), _chunks()
     assert [d.metadata["id"] for d in a] == [d.metadata["id"] for d in b]
