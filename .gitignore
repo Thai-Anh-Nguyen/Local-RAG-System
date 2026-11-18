@@ -17,3 +17,6 @@ dist/
 # Packaging output
 *.zip
 demo_video/*.mp4
+
+# Report build intermediate
+report/tools/report.html
