@@ -37,7 +37,7 @@ from rag.config import Settings
 from rag.embeddings import PrefixedEmbeddings
 from rag.generation import NOT_FOUND, build_messages
 from rag.parsing import parse_file
-from rag.retrieval import Turn, retrieval_query, retrieve, top_score
+from rag.retrieval import Turn, gate_score, retrieval_query, retrieve, top_score
 from rag.store import KnowledgeStore
 
 ROOT = Path(__file__).resolve().parents[2]  # source_code/
@@ -169,8 +169,9 @@ def run_baseline(q, baseline: BaselineIndex, llm: OllamaLLM):
 def run_final(q, store: KnowledgeStore, settings: Settings, model: str):
     t0 = time.perf_counter()
     history = [Turn(**t) for t in q.get("history", [])]
-    hits = retrieve(store, retrieval_query(q["question"], history), settings.top_k, "hybrid")
-    best = top_score(hits)
+    query = retrieval_query(q["question"], history)
+    hits = retrieve(store, query, settings.top_k, "hybrid")
+    best = gate_score(store, q["question"], hits, query, settings)  # same gate as the API
     if best < settings.relevance_threshold:
         return {"answer": "(refused before LLM)", "refused": True, "gate_score": round(best, 4),
                 "latency_s": round(time.perf_counter() - t0, 2), "pages": [h.chunk.metadata["page"] for h in hits]}

@@ -251,11 +251,28 @@ The course's `run_txt.py` is the starting point.
 | Chunking | Fixed 1000/200 characters, no structure | Heading-aware sections, then 1000/200; page and heading metadata and a breadcrumb per chunk |
 | Embeddings | nomic-embed-text without task prefixes | `search_document:` / `search_query:` prefixes |
 | Retrieval | Vector only (L2 distance) | Hybrid vector + BM25 with RRF, cosine similarity |
-| Relevance gate | Average of `1/(1+L2)` over the top 5 vs 0.3 | Best cosine vs a threshold calibrated on real scores; refusal skips the LLM |
+| Relevance gate | Average of `1/(1+L2)` over the top 5 vs 0.3; never fires (0/30 in the evaluation) | Best cosine of the current question vs a calibrated 0.62; refusal skips the LLM |
 | Prompt | Fall back to "general knowledge" | Grounded: excerpts only, numbered citations, explicit not-found answer |
 | Temperature | 0.7 | 0.1 |
 | Interface | CLI, one question | Web UI with streaming, citations, history, model picker, knowledge-base inspector |
 | Deployment | Manual | Docker Compose (GPU, CPU and dev variants) |
+
+## Evaluation results
+
+30 handbook questions; details are in [report/eval/](report/eval/).
+
+| Retrieval (27 answerable, k = 5) | hit@5 | MRR |
+|---|---|---|
+| Baseline (pypdf, plain chunks, L2) | 20/27 | 0.540 |
+| + heading-aware PyMuPDF chunks | 23/27 | 0.723 |
+| + nomic prefixes | 23/27 | 0.725 |
+| + hybrid BM25 (shipped) | **25/27** | **0.760** |
+
+| Answers (auto heuristics) | key facts present | unanswerable declined | valid citations | median latency |
+|---|---|---|---|---|
+| Baseline + qwen2.5:0.5b | 13/27 | 0/3 | none | 6.6 s |
+| Final + qwen2.5:0.5b | 13/27 | 2/3 | 3/26 | 7.9 s |
+| Final + llama3.1:8b | **23/27** | **3/3** | **26/26** | **1.6 s** |
 
 ## Known limitations
 
@@ -263,6 +280,7 @@ The course's `run_txt.py` is the starting point.
 - **PDF extraction artifacts.** Some words lose their spaces inside tables ("Once ayear", "DeepLearning"). Broken ligatures ("Descrip8on") are repaired, but other glyph problems may remain.
 - **Vietnamese questions** get answers in Vietnamese, but retrieval is weaker because nomic-embed-text and the handbook are English. A multilingual embedder such as `bge-m3` would help.
 - **The relevance score measures retrieval, not answer correctness.** A question can pass the threshold and still be answered imperfectly by the LLM.
+- **The refusal gate is a coarse filter.** Off-topic and handbook questions overlap in similarity: off-topic scored 0.46–0.64, and the weakest handbook question 0.636. At 0.62 the gate refuses most off-topic questions, and the grounded prompt catches the rest with llama3.1:8b. In-domain questions the handbook doesn't answer (tuition, staff) always reach the LLM. See [report/eval/gate-calibration.md](report/eval/gate-calibration.md). Re-calibrate if you change the embedding model or the Ollama version.
 - **Small models** (`qwen2.5:0.5b`) often ignore citation rules or misread tables. This is shown in the evaluation.
 - The BM25 index is rebuilt in memory when the collection changes; that's fine for handbook-sized collections.
 - There is no authentication or multi-user isolation; it's intended for local use.
