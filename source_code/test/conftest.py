@@ -57,7 +57,7 @@ class FakeLLM:
 CHUNKS = [
     ("Major Requirements (56 credits)", 7, "Computer Science major requirements total 56 credits of courses."),
     ("CS311: Advanced Deep Learning", 18, "Prerequisites: CS313. Advanced deep learning architectures."),
-    ("CS211: Operating Systems", 16, "Operating systems: processes, threads, scheduling, memory, file systems."),
+    ("CS211: Operating Systems", 16, "Operating systems course topics: processes, threads, scheduling, memory, file systems."),
     ("Capstone", 9, "Capstone enrollment needs a minimum major GPA of 3.5 and an approved application."),
 ]
 

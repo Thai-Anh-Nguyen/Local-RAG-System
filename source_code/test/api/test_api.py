@@ -51,14 +51,27 @@ def test_chat_reports_llm_failure_as_error_event(client, settings, store):
     assert events[-1][0] == "error" and "Ollama is down" in events[-1][1]["message"]
 
 
-def test_followup_uses_previous_question_for_retrieval(client):
+def test_followup_uses_previous_question_for_retrieval(client, settings):
+    settings.relevance_threshold = 0.1  # this test is about retrieval; the gate has its own test
     history = [
         {"role": "user", "content": "Tell me about CS211 Operating Systems"},
         {"role": "assistant", "content": "It covers processes and threads [1]."},
     ]
-    events = _chat(client, question="what does it cover", history=history)
+    # The gate judges the follow-up on its own (it shares "topics"/"course" with the chunk);
+    # retrieval uses it together with the previous question to find CS211.
+    events = _chat(client, question="which topics does that course cover", history=history)
     assert events[0][0] == "sources"
     assert events[0][1]["sources"][0]["heading"] == "CS211: Operating Systems"
+
+
+def test_off_topic_after_on_topic_is_still_refused(client, llm):
+    history = [
+        {"role": "user", "content": "Tell me about CS211 Operating Systems processes threads scheduling"},
+        {"role": "assistant", "content": "It covers processes and threads [1]."},
+    ]
+    events = _chat(client, question="Who won the football world cup?", history=history)
+    assert [e for e, _ in events] == ["refusal"]
+    assert llm.calls == []
 
 
 # ---- prompt / retrieval units ----------------------------------------------------------
@@ -83,6 +96,13 @@ def test_hybrid_finds_exact_course_code(store):
     assert hits[0].chunk.metadata["heading"] == "CS311: Advanced Deep Learning"
     assert hits[0].bm25_rank == 1
     assert all(0.0 <= h.score <= 1.0001 for h in hits)
+
+
+def test_tokenizer_stems_words_but_keeps_course_codes():
+    from rag.retrieval import tokenize
+
+    assert tokenize("How are students assessed?") == tokenize("student assessment")[:1] + ["assess"]
+    assert tokenize("CS 311 and CS3xx") == ["cs311", "cs3xx"]
 
 
 def test_dense_mode_reports_dense_ranks_only(store):

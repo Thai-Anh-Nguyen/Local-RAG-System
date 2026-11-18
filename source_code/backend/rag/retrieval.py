@@ -16,9 +16,12 @@ import threading
 from dataclasses import dataclass
 from typing import Any
 
+import snowballstemmer
 from rank_bm25 import BM25Okapi
 
 from .store import Chunk, KnowledgeStore
+
+_stemmer = snowballstemmer.stemmer("english")  # "assessed"/"assessment" -> "assess"
 
 RRF_K = 60  # standard RRF constant
 _TOKEN = re.compile(r"[a-z0-9]+")
@@ -31,7 +34,9 @@ _STOP = set(
 
 def tokenize(text: str) -> list[str]:
     text = _CODE_SPACE.sub(r"\1\2", text.lower())
-    return [t for t in _TOKEN.findall(text) if t not in _STOP]
+    words = [t for t in _TOKEN.findall(text) if t not in _STOP]
+    # Course codes ("cs311") are kept verbatim; ordinary words are stemmed.
+    return [w if any(c.isdigit() for c in w) else _stemmer.stemWord(w) for w in words]
 
 
 @dataclass
@@ -133,3 +138,15 @@ def retrieve(store: KnowledgeStore, query: str, k: int, mode: str = "hybrid") ->
 def top_score(hits: list[Hit]) -> float:
     """Best cosine similarity among the hits (drives the refusal threshold)."""
     return max((h.score for h in hits), default=0.0)
+
+
+def gate_score(store: KnowledgeStore, question: str, hits: list[Hit], query: str, settings) -> float:
+    """Relevance used for the refusal decision.
+
+    Retrieval uses the history-augmented query (so "what are its prerequisites?" finds the right
+    course), but the gate must judge the *current* question alone: otherwise an off-topic question
+    asked after an on-topic one inherits the previous question's relevance and slips through.
+    """
+    if query == question:
+        return top_score(hits)
+    return top_score(retrieve(store, question, settings.top_k, settings.retrieval_mode))

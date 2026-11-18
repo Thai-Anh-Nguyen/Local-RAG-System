@@ -23,7 +23,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from rag.config import Settings
 from rag.generation import ChatModel, build_messages, make_llm, stream_answer
-from rag.retrieval import Turn, retrieval_query, retrieve, top_score
+from rag.retrieval import Turn, gate_score, retrieval_query, retrieve
 from rag.store import KnowledgeStore
 
 from .deps import settings_dep, store_dep
@@ -62,7 +62,7 @@ async def chat(
         try:
             query = retrieval_query(req.question, history)
             hits = await run_in_threadpool(retrieve, store, query, settings.top_k, settings.retrieval_mode)
-            best = top_score(hits)
+            best = await run_in_threadpool(gate_score, store, req.question, hits, query, settings)
             sources = [h.as_dict(SNIPPET_CHARS) for h in hits]
             if best < settings.relevance_threshold:
                 yield _event("refusal", {"message": REFUSAL, "top_score": round(best, 4),

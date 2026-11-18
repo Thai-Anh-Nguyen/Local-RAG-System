@@ -46,10 +46,13 @@ async def health(settings: Settings = Depends(settings_dep), store: KnowledgeSto
         chroma_ok = True
     except Exception:
         chunks, chroma_ok = None, False
-    ok = bool(chroma_ok and models is not None and _has(models, settings.embed_model)
+    from .main import INGEST_STATE  # late import: main imports this module
+
+    ok = bool(chroma_ok and chunks and models is not None and _has(models, settings.embed_model)
               and _has(models, settings.llm_model))
     return {
         "status": "ok" if ok else "degraded",
+        "ingest": dict(INGEST_STATE),
         "ollama": {"reachable": models is not None, "url": settings.ollama_url},
         "chroma": {"reachable": chroma_ok, "collection": settings.collection, "chunks": chunks},
         "models": {

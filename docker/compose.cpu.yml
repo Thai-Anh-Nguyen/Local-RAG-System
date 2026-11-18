@@ -1,0 +1,6 @@
+# Override for machines without an NVIDIA GPU / CDI setup: run Ollama on CPU.
+#   docker compose -f docker/compose.yml -f docker/compose.cpu.yml up -d --build
+# llama3.1:8b is slow on CPU (a few tokens/s); qwen2.5:0.5b is usable.
+services:
+  ollama:
+    devices: !reset []

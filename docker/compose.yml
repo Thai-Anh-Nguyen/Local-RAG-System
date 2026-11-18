@@ -1,0 +1,91 @@
+# Full stack: frontend (nginx) + api (FastAPI) + chroma + ollama (GPU via CDI).
+#
+#   docker compose -f docker/compose.yml up -d --build          # NVIDIA GPU (needs CDI, see README)
+#   docker compose -f docker/compose.yml -f docker/compose.cpu.yml up -d --build   # no GPU
+#
+# Then open http://localhost:3000. First start pulls ~5.6 GB of models into the ollama volume.
+# If a host Ollama service is running, stop it first so both don't compete for VRAM:
+#   sudo systemctl stop ollama
+name: local-rag
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.16
+    volumes:
+      - ollama-models:/root/.ollama
+    devices:
+      - nvidia.com/gpu=all  # CDI device; removed by compose.cpu.yml
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    # Published on 11435 (localhost only) for the evaluation scripts; a host Ollama may
+    # already own 127.0.0.1:11434.
+    ports:
+      - "127.0.0.1:11435:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  ollama-init:
+    # One-shot: pull the models the API needs, then exit.
+    image: ollama/ollama:0.40.16
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for m in $${MODELS}; do echo "pulling $$m"; ollama pull "$$m"; done
+    env_file:
+      - path: models.env
+        required: false
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  chroma:
+    image: chromadb/chroma:1.5.9  # keep in step with the chromadb Python client
+    volumes:
+      - chroma-data:/data
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../source_code
+      dockerfile: ../docker/backend.Dockerfile
+    env_file:
+      - path: ../source_code/.env
+        required: false
+    environment:
+      RAG_OLLAMA_URL: http://ollama:11434
+      RAG_CHROMA_HOST: chroma
+      RAG_CHROMA_PORT: "8000"
+      RAG_DATA_DIR: /app/data/handbooks
+    volumes:
+      - ../source_code/data:/app/data  # handbook + uploads live on the host
+    depends_on:
+      chroma:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../source_code/frontend
+      dockerfile: ../../docker/frontend.Dockerfile
+      additional_contexts:
+        nginxconf: .
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  chroma-data:
