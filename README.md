@@ -25,7 +25,7 @@ A chatbot for the **Fulbright University Vietnam B.S. Computer Science major han
 
 ## Architecture
 
-![Local RAG system flowchart: Browser (React + Vite) → nginx → FastAPI (rag core, in-process BM25) → ChromaDB vector search and Ollama embeddings/generation](docs/images/architecture.webp)
+![Local RAG system flowchart: Browser (React + Vite) → nginx → FastAPI (rag core, in-process BM25) → ChromaDB vector search and Ollama embeddings/generation](docs/images/architecture.png)
 
 **Ingestion:** PDF → PyMuPDF (markdown with headings and tables) → ligature repair → heading-aware chunks (1000 chars, 200 overlap, each starting with its `[Section > Heading]` breadcrumb) → `search_document:`-prefixed embeddings → Chroma. Chunk IDs are stable hashes, so re-ingesting an unchanged file does nothing.
 
