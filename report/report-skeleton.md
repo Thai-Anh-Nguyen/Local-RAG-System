@@ -145,7 +145,7 @@ Takeaways:
   - A cross-encoder reranker
   - Table-aware chunking
   - A multilingual embedder
-  - Chunk editing in the UI (designed as a nice-to-have)
+  - Chunk editing in the UI (designed, then dropped from scope)
   - Automatic LLM-as-judge evaluation
 
 ## 10. Conclusion (~80 words)

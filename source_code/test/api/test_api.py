@@ -1,3 +1,5 @@
+import pytest
+
 from conftest import FakeLLM, read_sse
 
 from rag.generation import NOT_FOUND, build_messages
@@ -164,3 +166,31 @@ def test_upload_list_and_delete_markdown(client, settings):
 def test_upload_rejects_unsupported_type(client):
     r = client.post("/api/documents", files={"file": ("x.docx", b"hi", "application/octet-stream")})
     assert r.status_code == 400
+
+
+def _tiny_pdf() -> bytes:
+    import pymupdf
+
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Library Hours", fontsize=16)
+    page.insert_text((72, 100), "The campus library is open until midnight during exam weeks.", fontsize=11)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+@pytest.mark.parametrize(
+    ("name", "body", "mime"),
+    [
+        ("notes.txt", b"The campus library is open until midnight during exam weeks.\n", "text/plain"),
+        ("library.pdf", None, "application/pdf"),
+    ],
+)
+def test_upload_txt_and_pdf(client, settings, name, body, mime):
+    r = client.post("/api/documents", files={"file": (name, body or _tiny_pdf(), mime)})
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "indexed" and r.json()["chunks"] >= 1
+    assert (settings.data_path / "uploads" / name).exists()
+    hit = client.post("/api/retrieve", json={"question": "when is the library open during exams"}).json()["hits"][0]
+    assert hit["source"] == name

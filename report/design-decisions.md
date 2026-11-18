@@ -48,7 +48,7 @@ The UI labels the score "retrieval relevance". It measures whether the retrieved
 - `POST /retrieve` → top-k chunks with scores, no LLM call
 - `GET /documents`, `POST /documents` (upload), `DELETE /documents/{source}`
 - `GET /chunks?source=&page=&contains=&limit=&offset=`, `GET /chunks/{id}`
-- Nice-to-have (built last): `PATCH /chunks/{id}` (re-embed, `edited` badge), `POST /chunks` (manual note), `DELETE /chunks/{id}`. Edits are lost if the source file changes and is re-ingested.
+- Chunk editing (`PATCH`/`POST`/`DELETE /chunks`) was designed as a nice-to-have and then dropped from scope; the KB page is read-only apart from document upload/remove.
 
 ## Conversation history
 - Stored in the browser (localStorage). The client sends the last 3 turns.
@@ -73,7 +73,7 @@ README.md
 6. Docker (full GPU / dev / CPU) + end-to-end smoke test
 7. README
 8. Evaluation set (about 25 questions, hit@k plus manual grading) + run + report skeleton
-9. Nice-to-have: chunk editing
+9. ~~Nice-to-have: chunk editing~~ (dropped)
 10. Packaging script → `ADL-240039-project.zip`
 
 ## Notes for the report

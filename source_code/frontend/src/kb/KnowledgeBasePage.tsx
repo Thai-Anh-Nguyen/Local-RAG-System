@@ -3,6 +3,8 @@ import { api, type DocumentInfo } from '../lib/api'
 import ChunkBrowser from './ChunkBrowser'
 import RetrievalTester from './RetrievalTester'
 
+const ACCEPTED = ['.pdf', '.md', '.txt']
+
 export default function KnowledgeBasePage() {
   const [docs, setDocs] = useState<DocumentInfo[]>([])
   const [selected, setSelected] = useState<string>('')
@@ -10,6 +12,7 @@ export default function KnowledgeBasePage() {
   const [status, setStatus] = useState<{ kind: 'info' | 'error'; text: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(() => {
@@ -27,7 +30,26 @@ export default function KnowledgeBasePage() {
     refresh()
   }, [refresh])
 
+  // A file dropped anywhere outside the drop zone would make the browser open it and leave the app.
+  useEffect(() => {
+    const block = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) e.preventDefault()
+    }
+    window.addEventListener('dragover', block)
+    window.addEventListener('drop', block)
+    return () => {
+      window.removeEventListener('dragover', block)
+      window.removeEventListener('drop', block)
+    }
+  }, [])
+
   async function upload(file: File) {
+    if (uploading) return
+    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase()
+    if (!ACCEPTED.includes(ext)) {
+      setStatus({ kind: 'error', text: `"${file.name}" is not supported. Upload a ${ACCEPTED.join(' / ')} file.` })
+      return
+    }
     setUploading(true)
     setStatus({ kind: 'info', text: `Indexing ${file.name}… (PDF parsing can take ~30 s)` })
     try {
@@ -97,20 +119,34 @@ export default function KnowledgeBasePage() {
               </li>
             ))}
           </ul>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf,.md,.txt"
-            className="hidden"
-            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
-          />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="mt-3 w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 hover:border-blue-400 hover:text-blue-700 disabled:opacity-50"
+          <label
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragging(false)
+              const f = e.dataTransfer.files?.[0]
+              if (f) upload(f)
+            }}
+            aria-disabled={uploading}
+            className={`mt-3 block w-full cursor-pointer rounded-lg border border-dashed px-3 py-3 text-center text-sm transition-colors focus-within:ring-2 focus-within:ring-blue-300 ${
+              dragging ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-700'
+            } ${uploading ? 'pointer-events-none opacity-50' : ''}`}
           >
+            <input
+              ref={fileRef}
+              type="file"
+              accept={ACCEPTED.join(',')}
+              disabled={uploading}
+              className="sr-only"
+              onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+            />
             {uploading ? 'Indexing…' : '+ Upload PDF / Markdown / text'}
-          </button>
+            <span className="block text-xs text-slate-400">{uploading ? '' : 'click or drop a file here'}</span>
+          </label>
         </div>
         {status && (
           <p className={`rounded-lg px-3 py-2 text-xs ${status.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-800'}`}>
