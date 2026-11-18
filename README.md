@@ -15,6 +15,7 @@ A chatbot for the **Fulbright University Vietnam B.S. Computer Science major han
 - [Quick start (Docker)](#quick-start-docker)
 - [Development mode](#development-mode)
 - [Ingesting documents](#ingesting-documents)
+- [Asking from the terminal](#asking-from-the-terminal)
 - [Configuration](#configuration)
 - [API](#api)
 - [Tests](#tests)
@@ -163,7 +164,34 @@ uv run python -m rag.ingest path/to/any.pdf notes.md --parser pypdf
 uv run python -m rag.ingest data/handbooks --reset
 ```
 
+With the Docker stack, run the same CLI inside the API container (from the repo root):
+
+```bash
+docker compose -f docker/compose.yml exec api python -m rag.ingest data/handbooks --reset
+```
+
+To see how a file is parsed and chunked without touching the database, use the following command:
+
+```bash
+uv run python scripts/inspect_chunks.py data/handbooks/CS_MajorHandbook.pdf --grep "Capstone" --show 2
+```
+
 Files are fingerprinted by their content plus the parser and chunk settings. An unchanged file is skipped, and a changed file, or a changed `RAG_CHUNK_SIZE`, `RAG_PDF_PARSER` and so on, is re-indexed. Embedding happens before the old chunks are removed, so a failed re-index leaves the previous version intact.
+
+## Asking from the terminal
+
+`scripts/ask.py` calls the same `/api/chat` endpoint as the web UI and streams the answer and its sources. Run it from `source_code/`:
+
+```bash
+uv run python scripts/ask.py "What are the prerequisites for CS311?"
+```
+```bash
+uv run python scripts/ask.py --model qwen2.5:0.5b "What is the minimum major GPA to enroll in the Capstone?"
+```
+```bash
+uv run python scripts/ask.py
+```
+Run it with no question for an interactive chat with history. Add `--url http://localhost:8080` to use the dev-mode API instead of Docker.
 
 ## Configuration
 
@@ -232,11 +260,12 @@ uv run python test/e2e/retrieval_probe.py --url http://localhost:8080 --mode den
 │   │   ├── rag/            # framework-free core: parsing, chunking, embeddings, store, retrieval, generation, ingest CLI
 │   │   └── api/            # FastAPI app: routes_chat.py (SSE), routes_kb.py (health/docs/chunks/retrieve)
 │   ├── frontend/           # React + Vite + TypeScript + Tailwind (Chat and Knowledge base pages)
-│   ├── test/               # unit/, api/ (pytest), e2e/ (smoke + retrieval probe)
+│   ├── scripts/            # ask.py (terminal chat), inspect_chunks.py (parse/chunk viewer)
+│   ├── test/               # unit/, api/ (pytest), e2e/ (smoke + retrieval probe), eval/
 │   ├── data/handbooks/     # CS_MajorHandbook.pdf (+ uploads/)
 │   ├── pyproject.toml, uv.lock, .env.example
 ├── docker/                 # Dockerfiles, nginx.conf, compose.yml, compose.cpu.yml, compose.dev.yml, models.env
-├── docs/                   # GPU (CDI) setup notes
+├── docs/                   # GPU (CDI) setup notes, video recording commands
 ├── report/                 # design decisions, evaluation results, report
 └── demo_video/             # demo links
 ```

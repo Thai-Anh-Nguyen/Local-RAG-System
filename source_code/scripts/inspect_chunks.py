@@ -43,12 +43,12 @@ def main() -> int:
         return 2
 
     # 1. Parse
+    print(f"{BOLD}1. Parse{RESET}  {args.file.name} with {args.parser} … ", end="", flush=True)
     t0 = time.perf_counter()
     pages = parse_file(args.file, args.parser)
     t_parse = time.perf_counter() - t0
     chars = sum(len(p.text) for p in pages)
-    print(f"{BOLD}1. Parse{RESET}  {args.file.name} with {args.parser}: "
-          f"{len(pages)} non-empty pages, {chars:,} characters ({t_parse:.1f}s)")
+    print(f"{len(pages)} non-empty pages, {chars:,} characters ({t_parse:.1f}s)")
     if args.raw_page:
         page = next((p for p in pages if p.page == args.raw_page), None)
         print(f"{DIM}--- page {args.raw_page} as parsed ---{RESET}")

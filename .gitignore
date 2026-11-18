@@ -16,3 +16,4 @@ dist/
 
 # Packaging output
 *.zip
+demo_video/*.mp4

@@ -39,9 +39,19 @@ def normalize_text(text: str) -> str:
 
 
 def _parse_pdf_pymupdf(path: Path) -> list[PageText]:
+    import contextlib
+    import logging
+    import io
+
+    import pymupdf
     import pymupdf4llm
 
-    pages = pymupdf4llm.to_markdown(str(path), page_chunks=True, show_progress=False)
+    # pymupdf4llm prints "=== Document parser messages ===" / "RapidOCR is missing" to stdout for
+    # every PDF (OCR is irrelevant here: the handbook is text-based). Route its messages to the
+    # `pymupdf` logger (silent unless logging is configured) and swallow the stray print().
+    pymupdf.set_messages(pylogging=True, pylogging_level=logging.INFO)
+    with contextlib.redirect_stdout(io.StringIO()):
+        pages = pymupdf4llm.to_markdown(str(path), page_chunks=True, show_progress=False)
     return [PageText(page=p["metadata"]["page_number"], text=p["text"]) for p in pages]
 
 
