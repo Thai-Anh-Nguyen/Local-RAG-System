@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 import chromadb
+from chromadb.errors import NotFoundError
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
@@ -37,6 +39,21 @@ class Chunk:
         }
 
 
+def _reconnecting(method):
+    """Retry once after re-opening the collection by name. Needed when another process deleted and
+    re-created it (e.g. `rag.ingest --reset` while the API runs): our handle holds the old id."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except NotFoundError:
+            self._reconnect()
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class KnowledgeStore:
     def __init__(self, client: chromadb.ClientAPI, embeddings: Embeddings, collection: str):
         self.client = client
@@ -55,6 +72,7 @@ class KnowledgeStore:
         return self.vs._collection
 
     # ---- writes ----------------------------------------------------------------
+    @_reconnecting
     def add_chunks(self, docs: list[Document], embeddings: list[list[float]] | None = None) -> None:
         if not docs:
             return
@@ -77,6 +95,7 @@ class KnowledgeStore:
         self.delete_source(source)
         self.add_chunks(docs, embeddings)
 
+    @_reconnecting
     def delete_source(self, source: str) -> int:
         ids = self.collection.get(where={"source": source}, include=[])["ids"]
         if ids:
@@ -86,16 +105,23 @@ class KnowledgeStore:
 
     def reset(self) -> None:
         self.client.delete_collection(self.collection_name)
+        self._reconnect()
+
+    def _reconnect(self) -> None:
+        """Get-or-create the collection again (bumps `version`, so caches such as BM25 rebuild)."""
         self.__init__(self.client, self.embeddings, self.collection_name)
 
     # ---- reads -----------------------------------------------------------------
+    @_reconnecting
     def count(self) -> int:
         return self.collection.count()
 
+    @_reconnecting
     def source_hash(self, source: str) -> str | None:
         got = self.collection.get(where={"source": source}, limit=1, include=["metadatas"])
         return got["metadatas"][0].get("file_hash") if got["ids"] else None
 
+    @_reconnecting
     def list_documents(self) -> list[dict[str, Any]]:
         metas = self.collection.get(include=["metadatas"])["metadatas"]
         docs: dict[str, dict[str, Any]] = {}
@@ -110,6 +136,7 @@ class KnowledgeStore:
             {**d, "pages": len(d["pages"])} for d in sorted(docs.values(), key=lambda d: d["source"])
         ]
 
+    @_reconnecting
     def get_chunks(
         self,
         source: str | None = None,
@@ -133,12 +160,14 @@ class KnowledgeStore:
                                    c.metadata.get("chunk_index") or 0))
         return len(chunks), chunks[offset : offset + limit]
 
+    @_reconnecting
     def get_chunk(self, chunk_id: str) -> Chunk | None:
         got = self.collection.get(ids=[chunk_id], include=["documents", "metadatas"])
         if not got["ids"]:
             return None
         return Chunk(got["ids"][0], got["documents"][0], got["metadatas"][0])
 
+    @_reconnecting
     def all_chunks(self) -> list[Chunk]:
         got = self.collection.get(include=["documents", "metadatas"])
         return [Chunk(i, t, m) for i, t, m in zip(got["ids"], got["documents"], got["metadatas"])]
@@ -146,6 +175,7 @@ class KnowledgeStore:
     def embed_query(self, query: str) -> list[float]:
         return self.embeddings.embed_query(query)
 
+    @_reconnecting
     def search_by_vector(self, vector: list[float], k: int) -> list[tuple[Chunk, float]]:
         """Top-k chunks with cosine similarity (1 - cosine distance)."""
         if k <= 0:
@@ -158,6 +188,7 @@ class KnowledgeStore:
             for i, t, m, d in zip(got["ids"][0], got["documents"][0], got["metadatas"][0], got["distances"][0])
         ]
 
+    @_reconnecting
     def cosine_for(self, vector: list[float], ids: list[str]) -> dict[str, float]:
         """Cosine similarity between `vector` and the stored embeddings of `ids`."""
         if not ids:

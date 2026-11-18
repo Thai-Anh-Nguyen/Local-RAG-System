@@ -102,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Collection '{settings.collection}' reset.")
     for f in files:
         r = ingest_file(f, store, settings, parser=args.parser)
-        print(f"  {r.status:<9} {r.source}  ({r.pages} pages, {r.chunks} chunks)")
+        detail = "already indexed, skipped" if r.status == "unchanged" else f"{r.pages} pages, {r.chunks} chunks"
+        print(f"  {r.status:<9} {r.source}  ({detail})")
     print(f"Collection '{settings.collection}' now holds {store.count()} chunks.")
     return 0
 

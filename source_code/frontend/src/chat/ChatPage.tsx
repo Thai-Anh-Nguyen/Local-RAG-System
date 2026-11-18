@@ -107,7 +107,7 @@ export default function ChatPage({ model }: { model: string }) {
       <div className="flex-1 overflow-y-auto py-6">
         {messages.length === 0 ? (
           <div className="mt-16 text-center">
-            <h2 className="text-lg font-semibold">Ask about the CS major handbook</h2>
+            <h2 className="text-lg font-semibold">Ask about the major handbook</h2>
             <p className="mt-1 text-sm text-slate-500">
               Answers come only from the handbook, with numbered citations. Off-topic questions are declined.
             </p>
