@@ -25,15 +25,7 @@ A chatbot for the **Fulbright University Vietnam B.S. Computer Science major han
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    U[Browser<br/>React + Vite] -->|/api| N[nginx]
-    N --> A[FastAPI<br/>rag core]
-    A -->|embed + search| C[(ChromaDB<br/>cosine)]
-    A -->|BM25 in-process| A
-    A -->|embeddings<br/>nomic-embed-text| O[Ollama<br/>GPU]
-    A -->|generation<br/>llama3.1:8b| O
-```
+![Local RAG system flowchart: Browser (React + Vite) → nginx → FastAPI (rag core, in-process BM25) → ChromaDB vector search and Ollama embeddings/generation](docs/images/architecture.webp)
 
 **Ingestion:** PDF → PyMuPDF (markdown with headings and tables) → ligature repair → heading-aware chunks (1000 chars, 200 overlap, each starting with its `[Section > Heading]` breadcrumb) → `search_document:`-prefixed embeddings → Chroma. Chunk IDs are stable hashes, so re-ingesting an unchanged file does nothing.
 
